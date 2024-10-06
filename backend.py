@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify
-import openai
-import boto3
 import json
+
+import boto3
+import openai
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -42,12 +43,14 @@ def chat(messages, model="gpt-4o", **kwargs):
 
 def chat_bedrock(
     messages: list[dict[str, str]],
-    model="anthropic.claude-3-sonnet-20240307-v1:0",
+    model="anthropic.claude-3-5-sonnet-20240620-v1:0",
     **kwargs,
 ) -> str:
     client = boto3.client(service_name="bedrock-runtime", region_name="us-east-1")
     system_message = messages[0]["content"]
     messages = messages[1:]
+    for m in messages:
+        del m["id"]
     response = client.invoke_model(
         modelId=model,
         body=json.dumps(
