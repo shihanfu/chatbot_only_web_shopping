@@ -27,14 +27,13 @@
       </div>
     </div>
     <n-upload
+      directory-dnd
       ref="uploadRef"
       multiple
       :max="5"
       list-type="image-card"
-      :custom-request="handleImageSelection"
       @change="handleImageChange"
     >
-      <!-- <n-upload-dragger> + </n-upload-dragger> -->
     </n-upload>
     <div class="input-container">
       <n-input-group>
@@ -44,6 +43,7 @@
           placeholder="Type your message..."
           :loading="isLoading"
           type="textarea"
+          @keydown.ctrl.enter.prevent="sendMessage"
         />
         <n-button
           :loading="isLoading"
@@ -59,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { Ref, ref } from 'vue'
+import { nextTick, Ref, ref } from 'vue'
 
 // Hardcoded system prompt
 const systemPrompt =
@@ -120,6 +120,7 @@ const handleFileUpload = (event: Event) => {
 // }
 // Updated handleImageSelection function
 const handleImageSelection = async (file) => {
+  // console.log(file)
   // file.onFinish()
 }
 
@@ -179,6 +180,13 @@ const sendMessage = async () => {
       role: 'user',
       content: messageContent
     })
+    // scroll to bottom
+    nextTick(() => {
+      document.querySelector('.chat-container').scrollTo({
+        top: document.querySelector('.chat-container').scrollHeight,
+        behavior: 'smooth'
+      })
+    })
 
     const copy_of_messages = messages.value
     copy_of_messages[0].content[0].text += appendedPrompt
@@ -211,6 +219,13 @@ const sendMessage = async () => {
             text: data.message
           }
         ]
+      })
+      // scroll to bottom
+      nextTick(() => {
+        document.querySelector('.chat-container').scrollTo({
+          top: document.querySelector('.chat-container').scrollHeight,
+          behavior: 'smooth'
+        })
       })
     } catch (error) {
       console.error('Error:', error)
