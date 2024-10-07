@@ -44,6 +44,7 @@
           :loading="isLoading"
           type="textarea"
           @keydown.ctrl.enter.prevent="sendMessage"
+          @keydown.meta.enter.prevent="sendMessage"
         />
         <n-button
           :loading="isLoading"
