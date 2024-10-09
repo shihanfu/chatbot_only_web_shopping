@@ -1,4 +1,5 @@
 import json
+import time
 
 import boto3
 import openai
@@ -70,6 +71,8 @@ def chat_bedrock(
 def proxy():
     messages = request.json.get("messages")
     response = chat(messages)
+    with open(f"data/{time.time()}.json", "w") as f:
+        json.dump({"messages": messages, "response": response}, f)
     return jsonify({"message": response}), 200
 
 
@@ -77,6 +80,8 @@ def proxy():
 def proxy_bedrock():
     messages = request.json.get("messages")
     response = chat_bedrock(messages)
+    with open(f"data/{time.time()}.json", "w") as f:
+        json.dump({"messages": messages, "response": response}, f)
     return jsonify({"message": response}), 200
 
 

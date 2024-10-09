@@ -213,7 +213,7 @@ const sendMessage = async () => {
       })
     })
 
-    const copy_of_messages = messages.value
+    const copy_of_messages = JSON.parse(JSON.stringify(messages.value))
     copy_of_messages[0].content[0].text += appendedPrompt
 
     // Clear the input
