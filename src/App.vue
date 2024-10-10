@@ -5,25 +5,36 @@
       <n-button>Select Memory Trace File</n-button>
     </n-upload>
     <div class="chat-container">
-      <div v-for="message in messages" :key="message.id" :class="['message', message.role]">
-        <!-- Loop through message content array -->
-        <n-input
-          type="textarea"
-          v-if="message.role === 'system'"
-          v-model:value="message.content[0].text"
-        />
-        <div v-else v-for="(item, index) in message.content" :key="index">
-          <p v-if="item.type === 'text'">{{ item.text }}</p>
-          <img
-            v-else-if="item.type === 'image'"
-            :src="'data:' + item.source.media_type + ';base64,' + item.source.data"
-            alt="Uploaded Image"
+      <div class="row" v-for="message in messages" :key="message.id">
+        <div class="space" v-if="message.role == 'user'"></div>
+        <div :class="['message', message.role]">
+          <!-- Loop through message content array -->
+          <n-input
+            type="textarea"
+            style="width: 100%"
+            v-if="message.role === 'system'"
+            v-model:value="message.content[0].text"
           />
+          <div v-else v-for="(item, index) in message.content" :key="index">
+            <p v-if="item.type === 'text'">
+              {{ item.text }}
+            </p>
+            <img
+              v-else-if="item.type === 'image'"
+              :src="'data:' + item.source.media_type + ';base64,' + item.source.data"
+              alt="Uploaded Image"
+            />
+          </div>
         </div>
+        <div class="space" v-if="message.role == 'assistant'"></div>
       </div>
       <!-- Loading indicator -->
-      <div v-if="isLoading" class="message assistant">
-        <p>Assistant is typing...</p>
+      <div class="row">
+        <div v-if="isLoading" class="message assistant">
+          <p>Assistant is typing...</p>
+        </div>
+
+        <div class="space"></div>
       </div>
     </div>
     <n-upload
@@ -263,4 +274,19 @@ const sendMessage = async () => {
 
 <style scoped>
 /* No styles here, styles are in main.css and base.css */
+.row {
+  display: flex;
+  flex-direction: row;
+}
+.space {
+  flex-grow: 1;
+  flex-shrink: 1;
+}
+.message {
+  flex-shrink: 0;
+  max-width: 100%;
+}
+.message:has(.n-input) {
+  width: 100%;
+}
 </style>
