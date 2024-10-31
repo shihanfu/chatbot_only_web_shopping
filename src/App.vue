@@ -58,8 +58,13 @@
           :loading="isLoading"
           :disabled="!persona"
           type="textarea"
-          @keydown.ctrl.enter.prevent="sendMessage"
-          @keydown.meta.enter.prevent="sendMessage"
+          @keydown="
+            (e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                sendMessage()
+              }
+            }
+          "
         />
         <n-button
           :loading="isLoading"
@@ -180,9 +185,9 @@ watch(persona, async () => {
 const showModal = ref(true)
 const persona_search = ref('')
 // Hardcoded system prompt
-const systemPrompt =
-  ref(`You are a participant who just participated in a user study. <Your persona> is given below.  In the study, you were tested to interact with a version of the website design of an online shopping platform like Amazon.com. You used the website for <Your intent>. <Your memory trace> is also given below, which contains your <observation>, your <thought>, your <reasoning/reflection>, and your <actions>.  Now you are interviewed by the website designer to talk about your user experience and feedback on the website design. You will answer based on <your persona> and <Your memory trace>.
-
+const systemPrompt = ref(`<IMPORTANT>
+You are a participant who just participated in a user study. <Your persona> is given below.  In the study, you were tested to interact with a version of the website design of an online shopping platform like Amazon.com. You used the website for <Your intent>. <Your memory trace> is also given below, which contains your <observation>, your <thought>, your <reasoning/reflection>, and your <actions>.  Now you are interviewed by the website designer to talk about your user experience and feedback on the website design. You will answer based on <your persona> and <Your memory trace>.
+</IMPORTANT>
 <style>: You should talk using a verbal dialog style. Not too long conversation utterances. Leave room for dialog.  No formal structure no formal language. No written language style. No bullet point. Keep it short. If you have multiple points to make, bring only the top one or two in a conversation way.
 
 <Your persona>: {persona}
@@ -223,7 +228,9 @@ const handleFileUpload = (event: Event) => {
   }
 }
 
-const handleImageChange = async (event) => {
+import { debounce } from 'lodash'
+
+const handleImageChange = debounce(async (event) => {
   console.log(event.fileList)
   selectedImages.value = []
   for (const file of event.fileList) {
@@ -239,7 +246,7 @@ const handleImageChange = async (event) => {
     })
   }
   console.log(selectedImages.value.length)
-}
+}, 10)
 
 // Utility function to read file as Data URL
 function readFileAsDataURL(file) {
