@@ -1,5 +1,6 @@
 import json
 import time
+from pathlib import Path
 
 import boto3
 import openai
@@ -9,6 +10,10 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 client = openai.OpenAI()
+data_dir = Path("/Users/yuxuanlu/code/simulated_web_agent/data")
+
+simulations = list((data_dir / "simulation").glob("vir*"))
+personas = [open(sim_dir / "persona.txt").read() for sim_dir in simulations]
 
 
 def chat(messages, model="gpt-4o", **kwargs):
@@ -83,6 +88,26 @@ def proxy_bedrock():
     with open(f"data/{time.time()}.json", "w") as f:
         json.dump({"messages": messages, "response": response}, f)
     return jsonify({"message": response}), 200
+
+
+@app.route("/api/persona", methods=["GET"])
+def persona():
+    response_json = {"personas": {}}
+    for sim_dir, persona in zip(simulations, personas):
+        response_json["personas"][sim_dir.name] = persona
+    return jsonify(response_json), 200
+
+
+@app.route("/api/persona/<sim_name>/memory_trace", methods=["GET"])
+def memory_trace(sim_name: str):
+    sim_dir = data_dir / "simulation" / sim_name
+    # memory_trace_2.txt, find largest number
+    memory_trace_files = list(sim_dir.glob("memory_trace_*.txt"))
+    memory_trace_file = max(
+        memory_trace_files, key=lambda x: int(x.stem.split("_")[-1])
+    )
+    memory_trace = open(memory_trace_file).read()
+    return jsonify({"memory_trace": memory_trace}), 200
 
 
 if __name__ == "__main__":

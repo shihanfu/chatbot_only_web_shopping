@@ -1,9 +1,12 @@
 <template>
   <!-- Chat interface -->
   <main>
-    <n-upload :max="1" :custom-request="handleFileUpload">
-      <n-button>Select Memory Trace File</n-button>
-    </n-upload>
+    <n-button @click="showModal = true" style="width: 300px" v-if="!persona"
+      >Select Persona</n-button
+    >
+    <n-button @click="showModal = true" style="width: 300px" v-else
+      >Selected Persona: {{ persona }}</n-button
+    >
     <div class="chat-container">
       <div class="row" v-for="message in messages" :key="message.id">
         <div class="space" v-if="message.role == 'user'"></div>
@@ -53,6 +56,7 @@
           v-model:value="userInput"
           placeholder="Type your message..."
           :loading="isLoading"
+          :disabled="!persona"
           type="textarea"
           @keydown.ctrl.enter.prevent="sendMessage"
           @keydown.meta.enter.prevent="sendMessage"
@@ -63,50 +67,127 @@
           size="large"
           @click="sendMessage"
           style="height: 90px"
+          :disabled="userInput.trim() === ''"
           >Send</n-button
         >
       </n-input-group>
     </div>
+
+    <n-modal v-model:show="showModal">
+      <n-card
+        style="width: 600px"
+        title="Select Persona"
+        :bordered="false"
+        size="huge"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div class="row" style="height: 500px">
+          <div
+            style="
+              flex-basis: 165px;
+              flex-grow: 0;
+              flex-shrink: 0;
+              height: 100%;
+              display: flex;
+              flex-direction: column;
+            "
+          >
+            <div>
+              <n-input v-model:value="persona_search" placeholder="Search" />
+            </div>
+            <!-- <div style="flex: 1; overflow-y: auto" class="persona-list"> -->
+            <!-- <div
+                v-for="p in Object.keys(all_personas).filter(
+                  (p) => p.includes(persona_search) || persona_search === ''
+                )"
+                :key="p"
+                style="width: 100%"
+              >
+                <n-button @click="persona = p" style="width: 100%">{{ p }}</n-button>
+              </div> -->
+            <n-virtual-list
+              style="flex: 1; overflow-y: auto"
+              class="persona-list"
+              :item-size="34"
+              key-field="value"
+              :items="
+                Object.keys(all_personas)
+                  .filter((p) => p.includes(persona_search) || persona_search === '')
+                  .sort((a, b) => {
+                    // virtual customer 1, virtual customer 10, ...
+                    const a_num = parseInt(a.split(' ')[2])
+                    const b_num = parseInt(b.split(' ')[2])
+                    return a_num - b_num
+                  })
+                  .map((p) => ({
+                    value: p
+                  }))
+              "
+            >
+              <template #default="{ item }">
+                <div :key="'persona' + item.value" class="item" style="height: 34px">
+                  <n-button
+                    :type="persona === item.value ? 'primary' : 'default'"
+                    @click="persona = item.value"
+                    style="width: 100%"
+                    >{{ item.value }}</n-button
+                  >
+                </div>
+              </template>
+            </n-virtual-list>
+          </div>
+          <div style="flex: 1; overflow-y: auto">
+            <!-- {{ all_personas[persona] }}
+               -->
+            <n-code v-if="persona" :code="all_personas[persona]" word-wrap />
+            <n-empty
+              style="height: 100%; display: flex; justify-content: center; align-items: center"
+              description="Select a persona to continue"
+              v-else
+            />
+          </div>
+        </div>
+        <template #footer>
+          <n-button @click="showModal = false" type="primary" :disabled="!persona"
+            >Confirm</n-button
+          >
+        </template>
+      </n-card>
+    </n-modal>
   </main>
 </template>
 
 <script setup lang="ts">
-import { nextTick, Ref, ref } from 'vue'
+import { nextTick, ref, onMounted, watch } from 'vue'
+import { api_url } from './config'
 
+// 127.0.0.1:5001/api/persona
+const all_personas = ref({})
+onMounted(async () => {
+  const response = await fetch(api_url + '/api/persona')
+  all_personas.value = (await response.json()).personas
+})
+
+const persona = ref('')
+const memory_trace = ref('')
+watch(persona, async () => {
+  // 127.0.0.1:5001/api/persona/virtual%20customer%200/memory_trace
+  const response = await fetch(api_url + `/api/persona/${persona.value}/memory_trace`)
+  memory_trace.value = (await response.json()).memory_trace
+  console.log(memory_trace.value)
+})
+const showModal = ref(true)
+const persona_search = ref('')
 // Hardcoded system prompt
 const systemPrompt =
   ref(`You are a participant who just participated in a user study. <Your persona> is given below.  In the study, you were tested to interact with a version of the website design of an online shopping platform like Amazon.com. You used the website for <Your intent>. <Your memory trace> is also given below, which contains your <observation>, your <thought>, your <reasoning/reflection>, and your <actions>.  Now you are interviewed by the website designer to talk about your user experience and feedback on the website design. You will answer based on <your persona> and <Your memory trace>.
 
 <style>: You should talk using a verbal dialog style. Not too long conversation utterances. Leave room for dialog.  No formal structure no formal language. No written language style. No bullet point. Keep it short. If you have multiple points to make, bring only the top one or two in a conversation way.
 
-<Your persona>: Persona: Michael
+<Your persona>: {persona}
 
-Background:
-Michael is a software engineer at a thriving tech startup in San Francisco. With a passion for innovative technology, he plays a crucial role in developing cutting-edge applications that aim to disrupt traditional industries.
-
-Demographics:
-Age: 29
-Gender: Male
-Education: Bachelor's degree in Computer Science
-Profession: Software Engineer
-Income: $72,000
-
-Financial Situation:
-Michael earns a comfortable salary as a software engineer, allowing him to maintain a relatively stable financial standing. While he is mindful of his spending, he enjoys the occasional splurge on gadgets and experiences that fuel his creative interests.
-
-Shopping Habits:
-Michael prefers online shopping platforms that offer a visually engaging and organized browsing experience. He appreciates well-structured menus and appreciates sites that prioritize design aesthetics alongside functionality. While efficiency is important, he values the ability to explore products through thoughtfully categorized filters, even if it requires an extra click to access detailed options. Michael often discovers unique items by navigating through curated filter categories, enhancing her shopping experience.
-
-Professional Life:
-As a software engineer, Michael's workdays are filled with coding, collaborating with his team, and attending stand-up meetings. He thrives in a fast-paced, innovative environment and is always seeking opportunities to learn and grow professionally.
-
-Personal Style:
-Michael has a casual, yet stylish personal style. He favors comfortable, modern clothing that allows him to maintain a professional appearance while remaining at ease during his workday. Neutral colors and minimalist designs are his go-to choices, complemented by the occasional pop of color or trendy accessory.
-
-
-<Your intent>: buy a set of high-quality glow-in-the-dark vampire teeth for kids.
-
-<Your memory trace>: `)
+<Your memory trace>: {memory_trace} `)
 const uploadRef = ref()
 // Reactive variables
 const userInput = ref('')
@@ -140,25 +221,6 @@ const handleFileUpload = (event: Event) => {
     }
     reader.readAsText(file)
   }
-}
-// interface UploadCustomRequestOptions {
-//   file: FileInfo
-//   action?: string
-//   data?:
-//     | Record<string, string>
-//     | (({ file }: { file: FileInfo }) => Record<string, string>)
-//   withCredentials?: boolean
-//   headers?:
-//     | Record<string, string>
-//     | (({ file }: { file: FileInfo }) => Record<string, string>)
-//   onProgress: (e: { percent: number }) => void
-//   onFinish: () => void
-//   onError: () => void
-// }
-// Updated handleImageSelection function
-const handleImageSelection = async (file) => {
-  // console.log(file)
-  // file.onFinish()
 }
 
 const handleImageChange = async (event) => {
@@ -226,7 +288,16 @@ const sendMessage = async () => {
     })
 
     const copy_of_messages = JSON.parse(JSON.stringify(messages.value))
-    copy_of_messages[0].content[0].text += appendedPrompt
+    // copy_of_messages[0].content[0].text
+    // replace {persona} with persona.value
+    copy_of_messages[0].content[0].text = copy_of_messages[0].content[0].text.replace(
+      '{persona}',
+      all_personas.value[persona.value]
+    )
+    copy_of_messages[0].content[0].text = copy_of_messages[0].content[0].text.replace(
+      '{memory_trace}',
+      memory_trace.value
+    )
 
     // Clear the input
     userInput.value = ''
@@ -236,7 +307,7 @@ const sendMessage = async () => {
 
     try {
       // Make the API call to the backend
-      const response = await fetch('http://127.0.0.1:5001/api/openai', {
+      const response = await fetch(api_url + '/api/bedrock', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -273,7 +344,7 @@ const sendMessage = async () => {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 /* No styles here, styles are in main.css and base.css */
 .row {
   display: flex;
@@ -289,5 +360,12 @@ const sendMessage = async () => {
 }
 .message:has(.n-input) {
   width: 100%;
+}
+.persona-list {
+  overflow-y: auto;
+  .n-button {
+    width: 100%;
+    border-radius: 0;
+  }
 }
 </style>
