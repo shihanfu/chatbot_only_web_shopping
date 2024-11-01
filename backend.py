@@ -110,5 +110,25 @@ def memory_trace(sim_name: str):
     return jsonify({"memory_trace": memory_trace}), 200
 
 
+@app.route("/api/persona/<sim_name>/action_trace", methods=["GET"])
+def action_trace(sim_name: str):
+    sim_dir = data_dir / "simulation" / sim_name
+    action_trace_file = sim_dir / "action_trace.txt"
+    action_trace = open(action_trace_file).read()
+    return jsonify({"action_trace": action_trace}), 200
+
+
+# result.json
+@app.route("/api/persona/<sim_name>/result", methods=["GET"])
+def result(sim_name: str):
+    sim_dir = data_dir / "simulation" / sim_name
+    result_file = sim_dir / "result.json"
+    # if result_file does not exist, return empty string
+    if not result_file.exists():
+        return jsonify({"terminated": True}), 200
+    result = json.load(open(result_file))
+    return jsonify(result), 200
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5001)

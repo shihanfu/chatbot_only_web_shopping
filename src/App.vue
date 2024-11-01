@@ -7,18 +7,67 @@
     <n-button @click="showModal = true" style="width: 300px" v-else
       >Selected Persona: {{ persona }}</n-button
     >
+    <!-- {{ short_persona }} -->
+    <n-code v-if="persona" :code="short_persona" word-wrap />
     <div class="chat-container">
+      <div class="row">
+        <div class="message purchase">
+          <p v-if="purchase.title">
+            This virtual customer purchased
+            <span class="tag">
+              {{ purchase.title }}
+            </span>
+            with
+            <span class="tag">
+              {{ purchase.price.replace('\n', '').replaceAll(' ', '') }}
+            </span>
+          </p>
+          <p v-else>This virtual customer did not purchase anything.</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="message action">
+          <p>This virtual customer's actions in previous simulation:</p>
+          <n-highlight
+            :text="formatted_action_trace"
+            :patterns="[
+              'clicking',
+              'click',
+              'adding',
+              'add',
+              'selecting',
+              'select',
+              'typing',
+              'type',
+              'submitting',
+              'submit',
+              'terminating',
+              'terminate'
+            ]"
+            :highlight-style="{
+              padding: '0 6px',
+              borderRadius: themeVars.borderRadius,
+              display: 'inline-block',
+              color: themeVars.baseColor,
+              background: themeVars.primaryColor,
+              transition: `all .3s ${themeVars.cubicBezierEaseInOut}`
+            }"
+          ></n-highlight>
+        </div>
+      </div>
       <div class="row" v-for="message in messages" :key="message.id">
         <div class="space" v-if="message.role == 'user'"></div>
-        <div :class="['message', message.role]">
+        <div :class="['message', message.role]" v-if="message.role !== 'system'">
           <!-- Loop through message content array -->
-          <n-input
+          <!-- <n-input
             type="textarea"
             style="width: 100%"
             v-if="message.role === 'system'"
-            v-model:value="message.content[0].text"
-          />
-          <div v-else v-for="(item, index) in message.content" :key="index">
+            v-model:value="all_personas[persona]"
+            readonly
+          /> -->
+          <!-- <div v-if="message.role === 'system'"></div> -->
+          <div v-for="(item, index) in message.content" :key="index">
             <p v-if="item.type === 'text'">
               {{ item.text }}
             </p>
@@ -134,7 +183,12 @@
                 <div :key="'persona' + item.value" class="item" style="height: 34px">
                   <n-button
                     :type="persona === item.value ? 'primary' : 'default'"
-                    @click="persona = item.value"
+                    @click="
+                      () => {
+                        persona = item.value
+                        messages = [messages[0]]
+                      }
+                    "
                     style="width: 100%"
                     >{{ item.value }}</n-button
                   >
@@ -154,9 +208,11 @@
           </div>
         </div>
         <template #footer>
-          <n-button @click="showModal = false" type="primary" :disabled="!persona"
-            >Confirm</n-button
-          >
+          <div class="row" style="justify-content: center">
+            <n-button size="large" @click="showModal = false" type="primary" :disabled="!persona"
+              >Confirm</n-button
+            >
+          </div>
         </template>
       </n-card>
     </n-modal>
@@ -164,7 +220,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, onMounted, watch } from 'vue'
+import { nextTick, ref, onMounted, watch, computed } from 'vue'
 import { api_url } from './config'
 
 // 127.0.0.1:5001/api/persona
@@ -172,15 +228,52 @@ const all_personas = ref({})
 onMounted(async () => {
   const response = await fetch(api_url + '/api/persona')
   all_personas.value = (await response.json()).personas
+  persona.value = Object.keys(all_personas.value)[0]
 })
+import { useThemeVars } from 'naive-ui'
+const themeVars = useThemeVars()
 
 const persona = ref('')
 const memory_trace = ref('')
+const action_trace = ref('')
+const purchase = ref('')
+const formatted_action_trace = computed(() => {
+  if (!action_trace.value) return ''
+  let result = ''
+  let actions = []
+  // each line of action_trace is json, parse first
+  const lines = action_trace.value.split('\n')
+  for (const line of lines) {
+    if (line.trim() === '') continue
+    const json = JSON.parse(line)
+    actions.push(json)
+  }
+  // flatten actions
+  actions = actions.flat()
+  console.log(actions)
+  for (const action of actions) {
+    result += action.description + '; '
+  }
+  return result
+})
 watch(persona, async () => {
   // 127.0.0.1:5001/api/persona/virtual%20customer%200/memory_trace
-  const response = await fetch(api_url + `/api/persona/${persona.value}/memory_trace`)
-  memory_trace.value = (await response.json()).memory_trace
-  console.log(memory_trace.value)
+  const [memoryResponse, actionResponse, resultResponse] = await Promise.all([
+    fetch(api_url + `/api/persona/${persona.value}/memory_trace`),
+    fetch(api_url + `/api/persona/${persona.value}/action_trace`),
+    fetch(api_url + `/api/persona/${persona.value}/result`)
+  ])
+  memory_trace.value = (await memoryResponse.json()).memory_trace
+  action_trace.value = (await actionResponse.json()).action_trace
+  purchase.value = await resultResponse.json()
+})
+const short_persona = computed(() => {
+  if (!persona.value) return ''
+  // [0:2]
+  // from background to financial situation
+  let persona_text = all_personas.value[persona.value]
+  persona_text = persona_text.split('Background:')[1].split('Financial Situation:')[0]
+  return persona_text.replaceAll('\n\n', '\n').trim()
 })
 const showModal = ref(true)
 const persona_search = ref('')
@@ -188,11 +281,12 @@ const persona_search = ref('')
 const systemPrompt = ref(`<IMPORTANT>
 You are a participant who just participated in a user study. <Your persona> is given below.  In the study, you were tested to interact with a version of the website design of an online shopping platform like Amazon.com. You used the website for <Your intent>. <Your memory trace> is also given below, which contains your <observation>, your <thought>, your <reasoning/reflection>, and your <actions>.  Now you are interviewed by the website designer to talk about your user experience and feedback on the website design. You will answer based on <your persona> and <Your memory trace>.
 </IMPORTANT>
-<style>: You should talk using a verbal dialog style. Not too long conversation utterances. Leave room for dialog.  No formal structure no formal language. No written language style. No bullet point. Keep it short. If you have multiple points to make, bring only the top one or two in a conversation way.
 
 <Your persona>: {persona}
 
-<Your memory trace>: {memory_trace} `)
+<Your memory trace>: {memory_trace}
+
+<style>: You should talk using a verbal dialog style.   No formal structure no formal language. No written language style. No bullet point. If you have multiple points to make, bring only the top one in a conversation way. Very important is to keep your response succinct and short with maybe less than 3 or 4 sentences.</style>`)
 const uploadRef = ref()
 // Reactive variables
 const userInput = ref('')
@@ -374,5 +468,77 @@ const sendMessage = async () => {
     width: 100%;
     border-radius: 0;
   }
+}
+
+/* Chat styles */
+.chat-container {
+  flex: 1;
+  border: 1px solid var(--color-border);
+  padding: 15px;
+  overflow-y: auto;
+  min-height: 0;
+  margin: 20px 0;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+}
+
+.message {
+  margin-bottom: 15px;
+  padding: 10px;
+  border-radius: 5px;
+  color: var(--color-text); // Ensure text color is set
+
+  p {
+    margin: 0;
+  }
+
+  &.system {
+    background-color: #e9ecef;
+    color: #333333;
+  }
+
+  &.user {
+    background-color: rgb(225, 255, 204);
+  }
+
+  &.purchase {
+    background-color: #eaeaea; /* New color */
+    text-align: left;
+    width: 100%;
+  }
+  &.action {
+    background-color: #e8e1ff; /* New color */
+    width: 100%;
+  }
+
+  &.assistant {
+    background-color: rgb(207, 247, 255);
+    text-align: left;
+  }
+
+  img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 5px;
+    margin-top: 5px;
+  }
+}
+
+.input-container {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  align-items: center;
+
+  input[type='file'] {
+    margin-top: 10px;
+  }
+}
+.tag {
+  background-color: rgb(24, 160, 88); /* Softer blue background */
+  color: white; /* Darker text color for better contrast */
+  padding: 2px 4px; /* Add padding for better spacing */
+  border-radius: 3px; /* More rounded corners for a modern look */
+  // font-weight: bold; /* Bold text for emphasis */
 }
 </style>
