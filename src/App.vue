@@ -12,22 +12,21 @@
     <div class="chat-container">
       <div class="row">
         <div class="message purchase">
-          <p v-if="purchase.title">
+          <span v-if="purchase.title">
             This virtual customer purchased
             <span class="tag">
               {{ purchase.title }}
             </span>
-            with
+            at
             <span class="tag">
               {{ purchase.price.replace('\n', '').replaceAll(' ', '') }}
             </span>
-          </p>
-          <p v-else>This virtual customer did not purchase anything.</p>
-        </div>
-      </div>
-      <div class="row">
-        <div class="message action">
-          <p>This virtual customer's actions in previous simulation:</p>
+          </span>
+          <span v-else>This virtual customer did not purchase anything.</span>
+          <span v-if="purchase.title">
+            This virtual customer’s action trace leading to the purchase includes:
+          </span>
+          <span v-else>This virtual customer’s action trace includes:</span>
           <n-highlight
             :text="formatted_action_trace"
             :patterns="[
@@ -48,8 +47,9 @@
               padding: '0 6px',
               borderRadius: themeVars.borderRadius,
               display: 'inline-block',
-              color: themeVars.baseColor,
-              background: themeVars.primaryColor,
+              color: 'rgb(24, 160, 88)',
+              border: '1px solid rgba(24, 160, 88, 0.3)',
+              background: ' rgba(24, 160, 88, 0.1)',
               transition: `all .3s ${themeVars.cubicBezierEaseInOut}`
             }"
           ></n-highlight>
@@ -535,8 +535,9 @@ const sendMessage = async () => {
   }
 }
 .tag {
-  background-color: rgb(24, 160, 88); /* Softer blue background */
-  color: white; /* Darker text color for better contrast */
+  background-color: rgba(32, 128, 240, 0.1); /* Softer blue background */
+  color: rgb(32, 128, 240);
+  border: 1px solid rgba(32, 128, 240, 0.3);
   padding: 2px 4px; /* Add padding for better spacing */
   border-radius: 3px; /* More rounded corners for a modern look */
   // font-weight: bold; /* Bold text for emphasis */
