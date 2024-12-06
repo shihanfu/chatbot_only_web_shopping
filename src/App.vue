@@ -58,15 +58,6 @@
       <div class="row" v-for="message in messages" :key="message.id">
         <div class="space" v-if="message.role == 'user'"></div>
         <div :class="['message', message.role]" v-if="message.role !== 'system'">
-          <!-- Loop through message content array -->
-          <!-- <n-input
-            type="textarea"
-            style="width: 100%"
-            v-if="message.role === 'system'"
-            v-model:value="all_personas[persona]"
-            readonly
-          /> -->
-          <!-- <div v-if="message.role === 'system'"></div> -->
           <div v-for="(item, index) in message.content" :key="index">
             <p v-if="item.type === 'text'">
               {{ item.text }}
