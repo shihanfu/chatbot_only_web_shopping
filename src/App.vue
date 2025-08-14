@@ -19,7 +19,7 @@
                 </div>
                 <div class="pc-card-content">
                   <h3 class="pc-product-title">
-                    <a :href="product.url" target="_blank" rel="noopener noreferrer">
+                    <a :href="product.url" target="_top" rel="noopener noreferrer">
                       {{ product.name }}
                     </a>
                   </h3>
@@ -110,7 +110,7 @@ const messages = ref<Message[]>([])
 const sessionId = ref<string | null>(null)
 
 // Loading state
-const isLoading = ref(false)
+const isLoading = ref(true)
 
 // Product Card validation function
 const validateProductCard = (obj: any): obj is ProductCardJSON => {
@@ -319,6 +319,7 @@ const createSession = async () => {
       const data = await response.json()
       sessionId.value = data.session_id
       console.log(`✅ Session created: ${sessionId.value}`)
+      isLoading.value = false
     } else {
       console.error(`❌ Failed to create session: ${response.text}`)
     }
