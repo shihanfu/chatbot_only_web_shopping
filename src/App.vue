@@ -518,7 +518,7 @@ const sendMessage = async () => {
     }
     
     h3 {
-      font-size: 1.1em;
+      font-size: 1 em;
     }
     
     li {
@@ -554,7 +554,7 @@ const sendMessage = async () => {
   }
   
   @media (max-width: 768px) {
-    flex-direction: column;
+    flex-direction: row;
   }
 }
 
@@ -562,16 +562,17 @@ const sendMessage = async () => {
   flex-shrink: 0;
   width: 120px;
   height: 120px;
-  
+  align-self: center;   
+
   @media (max-width: 768px) {
-    width: 100%;
-    height: 200px;
+    width: 40%;
+    height: auto;
   }
   
   img {
     width: 100%;
-    height: 100%;
-    object-fit: cover;
+    height: auto;
+    object-fit: contain;
     display: block;
   }
 }
@@ -586,7 +587,7 @@ const sendMessage = async () => {
 
 .pc-product-title {
   margin: 0 0 8px 0;
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 600;
   
   a {
@@ -635,18 +636,18 @@ const sendMessage = async () => {
 .pc-rating-text {
   font-weight: 600;
   color: #374151;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .pc-review-count {
   color: #6b7280;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .pc-reason {
   margin: 0;
   color: #4b5563;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.4;
 }
 </style>
