@@ -41,7 +41,7 @@
       </div>
       <!-- Loading indicator -->
       <div class="row">
-        <div v-if="isLoading" class="message assistant">
+        <div v-if="isAssistantTyping" class="message assistant">
           <p>Assistant is typing...</p>
         </div>
         <div class="space"></div>
@@ -62,7 +62,7 @@
           size="large"
           @click="sendMessage"
           style="height: 90px"
-          :disabled="userInput.trim() === ''"
+          :disabled="userInput.trim() === '' || isLoading"
         >Send</n-button>
       </n-input-group>
     </div>
@@ -70,10 +70,18 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, onMounted } from 'vue'
+import { nextTick, ref, onMounted, onUnmounted } from 'vue'
 
-// Server configuration
 const SERVER_URL = "http://localhost:5000"
+
+// === 新增：存父页URL & 就绪Promise ===
+const currentUrl = ref<string | null>(localStorage.getItem('CSA_PARENT_URL'))
+let resolveParentUrlReady!: () => void
+const parentUrlReady = new Promise<void>((res) => (resolveParentUrlReady = res))
+
+function getUrlForSend(): string | null {
+  return currentUrl.value || (window as any).__CSA_PARENT_URL__ || localStorage.getItem('CSA_PARENT_URL')
+}
 
 // Product Card JSON Schema Types
 interface ProductItem {
@@ -111,6 +119,7 @@ const sessionId = ref<string | null>(null)
 
 // Loading state
 const isLoading = ref(true)
+const isAssistantTyping = ref(false)
 
 // Product Card validation function
 const validateProductCard = (obj: any): obj is ProductCardJSON => {
@@ -306,6 +315,28 @@ onMounted(async () => {
   await createSession()
 })
 
+const handleParentMessage = (event: MessageEvent) => {
+  // TODO: 生产环境建议校验 event.origin
+  if (event.data?.type === 'PARENT_URL') {
+    const url: string = event.data.url
+    console.log('[IFRAME] got parent url:', url)
+    currentUrl.value = url
+    ;(window as any).__CSA_PARENT_URL__ = url
+    localStorage.setItem('CSA_PARENT_URL', url)
+    resolveParentUrlReady?.() // 标记就绪
+  }
+}
+
+// Add message event listener on mount
+onMounted(() => {
+  window.addEventListener('message', handleParentMessage)
+})
+
+// Remove message event listener on unmount
+onUnmounted(() => {
+  window.removeEventListener('message', handleParentMessage)
+})
+
 // Create a new session
 const createSession = async () => {
   try {
@@ -361,8 +392,18 @@ const sendMessage = async () => {
 
     // Set loading state
     isLoading.value = true
+    isAssistantTyping.value = true
 
     try {
+      // 等待父页URL（最多 1500ms；如果拿不到也继续发）
+      await Promise.race([
+        parentUrlReady,
+        new Promise((r) => setTimeout(r, 1500))
+      ])
+
+      const urlForSend = getUrlForSend()
+      console.log('[IFRAME] /chat current_url =', urlForSend)
+
       // Make the API call to the backend
       const response = await fetch(`${SERVER_URL}/chat`, {
         method: 'POST',
@@ -371,7 +412,8 @@ const sendMessage = async () => {
         },
         body: JSON.stringify({
           session_id: sessionId.value,
-          message: messageText
+          message: messageText,
+          current_url: urlForSend || null        // ★ 关键：带上 current_url
         })
       })
 
@@ -409,6 +451,7 @@ const sendMessage = async () => {
       console.error('Error:', error)
     } finally {
       isLoading.value = false
+      isAssistantTyping.value = false
     }
   }
 }
