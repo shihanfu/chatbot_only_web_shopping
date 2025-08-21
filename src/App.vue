@@ -58,6 +58,7 @@
           v-model:value="userInput"
           placeholder="Type your message..."
           type="textarea"
+          style="height: 50px; --n-caret-color: rgb(0, 122, 255); --n-border-hover: 1px solid rgb(0, 122, 255); --n-border-focus: 1px solid rgb(0, 122, 255);"
           @keydown.enter.prevent="sendMessage()"
         />
         <n-button
@@ -65,7 +66,7 @@
           type="primary"
           size="large"
           @click="sendMessage"
-          style="height: 90px"
+          style="height: 50px; --n-color: rgb(0, 122, 255); --n-color-hover: rgb(0, 100, 220); --n-color-pressed: rgb(0, 80, 180); --n-color-focus: rgb(0, 100, 220); --n-color-disabled: rgb(0, 122, 255); --n-ripple-color: rgb(0, 122, 255); --n-border: 1px solid rgb(0, 122, 255); --n-border-hover: 1px solid rgb(0, 100, 220); --n-border-pressed: 1px solid rgb(0, 80, 180); --n-border-focus: 1px solid rgb(0, 100, 220); --n-border-disabled: 1px solid rgb(0, 122, 255);"
           :disabled="userInput.trim() === '' || isLoading"
         >Send</n-button>
       </n-input-group>
@@ -272,15 +273,15 @@ async function createSession() {
   console.log(`✅ Session created: ${sessionId.value}`)
 }
 
-// 从后端拉历史消息并渲染
 async function reloadFromServer(): Promise<boolean> {
   if (!sessionId.value) return false
   try {
     const resp = await fetch(`${SERVER_URL}/sessions/${sessionId.value}/messages`, { method: 'GET' })
     if (!resp.ok) {
       console.warn('load history failed:', resp.status)
-      return false
+      return false // ← 404 时返回 false，触发上层走新会话
     }
+    // ... 保持你原逻辑
     const data = await resp.json()
     if (!data.success || !Array.isArray(data.messages)) return false
 
@@ -311,43 +312,51 @@ async function reloadFromServer(): Promise<boolean> {
   }
 }
 
-// ========= 发送消息（保持你原逻辑，补一点持久化） =========
 async function sendMessage() {
-  if (userInput.value.trim() === '' || !sessionId.value) return
+  if (userInput.value.trim() === '') return
 
-  // 本地先插入 user 消息
+  // ★ 没有 session 时兜底自动建一个
+  if (!sessionId.value) {
+    await createSession()
+    if (!sessionId.value) {
+      console.error('❌ No session available')
+      return
+    }
+  }
+
   const messageText = userInput.value.trim()
-  messages.value.push({
-    id: Date.now(),
-    role: 'user',
-    content: [{ type: 'text', text: messageText }]
-  })
-
-  // 清输入 & 滚动
+  messages.value.push({ id: Date.now(), role: 'user', content: [{ type: 'text', text: messageText }] })
   userInput.value = ''
-  nextTick(() => {
-    const el = document.querySelector('.chat-container')
-    el?.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-  })
+  nextTick(() => document.querySelector('.chat-container')?.scrollTo({ top: 9e9, behavior: 'smooth' }))
 
   isLoading.value = true
   isAssistantTyping.value = true
 
-  try {
+  const doPost = async () => {
     // 尽量拿到父页 URL
     await Promise.race([parentUrlReady, new Promise(r => setTimeout(r, 1500))])
     const urlForSend = getUrlForSend()
     console.log('[IFRAME] /chat current_url =', urlForSend)
-
-    const resp = await fetch(`${SERVER_URL}/chat`, {
+    
+    return fetch(`${SERVER_URL}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_id: sessionId.value,
-        message: messageText,
-        current_url: urlForSend || null
-      })
+      body: JSON.stringify({ session_id: sessionId.value, message: messageText, current_url: urlForSend || null })
     })
+  }
+
+  try {
+    let resp = await doPost()
+
+    // ★ 如果 404，说明旧会话无效：重建并重试一次
+    if (resp.status === 404) {
+      console.warn('⚠️ /chat 404, recreating session and retrying…')
+      sessionId.value = null
+      localStorage.removeItem(LS_KEYS.sessionId)
+      await createSession()
+      if (!sessionId.value) throw new Error('recreate session failed')
+      resp = await doPost()
+    }
 
     if (!resp.ok) {
       console.error(`❌ Failed to send message: ${await resp.text()}`)
@@ -356,21 +365,11 @@ async function sendMessage() {
     const data = await resp.json()
     if (data.success) {
       const fragments = parseMessageContent(data.response ?? '')
-      messages.value.push({
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: fragments
-      })
-      // ★ 可选：同步拉后端（确保和服务端历史一致）
-      // await reloadFromServer()
+      messages.value.push({ id: Date.now() + 1, role: 'assistant', content: fragments })
+      nextTick(() => document.querySelector('.chat-container')?.scrollTo({ top: 9e9, behavior: 'smooth' }))
     } else {
       console.error('API returned success: false')
     }
-
-    nextTick(() => {
-      const el = document.querySelector('.chat-container')
-      el?.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-    })
   } catch (e) {
     console.error('sendMessage error:', e)
   } finally {
@@ -383,6 +382,7 @@ async function sendMessage() {
 async function clearChat() {
   if (!sessionId.value) return
   try {
+    isLoading.value = true
     const resp = await fetch(`${SERVER_URL}/cleanup-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -391,12 +391,30 @@ async function clearChat() {
     const data = await resp.json()
     if (resp.ok && data.success) {
       console.log('✅ Chat cleared:', data.message)
-      messages.value = []   // 前端清空
+
+      // 1) 前端视图清空
+      messages.value = []
+
+      // 2) 本地 session 置空并清掉 LS
+      sessionId.value = null
+      localStorage.removeItem(LS_KEYS.sessionId)
+
+      // 3) 立刻新建一个全新的 session（避免后续 /chat 404）
+      await createSession()
+
+      // （可选）提示一条系统消息
+      messages.value.push({
+        id: Date.now(),
+        role: 'system',
+        content: [{ type: 'text', text: 'Started a new session.' }]
+      })
     } else {
       console.error('❌ Failed to cleanup session:', data.error || resp.status)
     }
   } catch (e) {
     console.error('clearChat error:', e)
+  } finally {
+    isLoading.value = false
   }
 }
 </script>
@@ -423,10 +441,10 @@ async function clearChat() {
 .chat-container {
   flex: 1;
   border: 1px solid var(--color-border);
-  padding: 15px;
+  padding: 10px;
   overflow-y: auto;
   min-height: 0;
-  margin: 20px 0;
+  margin: 10px 0;
   background-color: #f9f9f9;
   border-radius: 8px;
 }
@@ -447,11 +465,13 @@ async function clearChat() {
   }
 
   &.user {
-    background-color: rgb(225, 255, 204);
+    background-color: rgb(0, 122, 255);
+    font-weight: bold;
+    color: white;
   }
 
   &.assistant {
-    background-color: rgb(207, 247, 255);
+    background-color: rgb(225, 225, 225);
     text-align: left;
     
     // Markdown styling
