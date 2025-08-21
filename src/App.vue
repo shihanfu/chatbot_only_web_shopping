@@ -1,6 +1,10 @@
 <template>
   <!-- Chat interface -->
   <main>
+    <div class="toolbar" style="display:flex; gap:8px; justify-content:flex-end;">
+      <n-button size="small" tertiary @click="reloadFromServer" :disabled="!sessionId || isLoading">Reload</n-button>
+      <n-button size="small" tertiary @click="clearChat" :disabled="isLoading">Clear Chat</n-button>
+    </div>
     <div class="chat-container">
       <div class="row" v-for="message in messages" :key="message.id">
         <div class="space" v-if="message.role == 'user'"></div>
@@ -74,396 +78,327 @@ import { nextTick, ref, onMounted, onUnmounted } from 'vue'
 
 const SERVER_URL = "http://localhost:5000"
 
-// === 新增：存父页URL & 就绪Promise ===
-const currentUrl = ref<string | null>(localStorage.getItem('CSA_PARENT_URL'))
+// ============ ★ 本地存储 Key ============
+const LS_KEYS = {
+  sessionId: 'CSA_SESSION_ID',
+  parentUrl: 'CSA_PARENT_URL'
+} as const
+
+// === 父页 URL 逻辑（保留你的实现） ===
+const currentUrl = ref<string | null>(localStorage.getItem(LS_KEYS.parentUrl))
 let resolveParentUrlReady!: () => void
 const parentUrlReady = new Promise<void>((res) => (resolveParentUrlReady = res))
-
 function getUrlForSend(): string | null {
-  return currentUrl.value || (window as any).__CSA_PARENT_URL__ || localStorage.getItem('CSA_PARENT_URL')
+  return currentUrl.value || (window as any).__CSA_PARENT_URL__ || localStorage.getItem(LS_KEYS.parentUrl)
 }
 
-// Product Card JSON Schema Types
+// ========= 类型定义（保持你原来的） =========
 interface ProductItem {
-  name: string
-  url: string
-  image: string
-  price: string
-  rating: number
-  review_count: number
-  reason: string
+  name: string; url: string; image: string; price: string;
+  rating: number; review_count: number; reason: string
 }
+interface ProductCardJSON { type: 'product_card'; version: '1.0'; data: ProductItem[] }
+type MessageItem = { type:'text'; text:string } | { type:'card'; card: ProductCardJSON }
+interface Message { id: number; role: 'user' | 'assistant' | 'system'; content: MessageItem[] }
 
-interface ProductCardJSON {
-  type: 'product_card'
-  version: '1.0'
-  data: ProductItem[]
-}
-
-// Message Item Types
-type MessageItem = 
-  | { type: 'text'; text: string }
-  | { type: 'card'; card: ProductCardJSON }
-
-// Define message type
-interface Message {
-  id: number
-  role: 'user' | 'assistant' | 'system'
-  content: MessageItem[]
-}
-
-// Reactive variables
+// ========= 状态 =========
 const userInput = ref('')
 const messages = ref<Message[]>([])
 const sessionId = ref<string | null>(null)
-
-// Loading state
 const isLoading = ref(true)
 const isAssistantTyping = ref(false)
 
-// Product Card validation function
+// ========= 工具函数（保留你原来的） =========
 const validateProductCard = (obj: any): obj is ProductCardJSON => {
   if (!obj || typeof obj !== 'object') return false
   if (obj.type !== 'product_card') return false
   if (obj.version !== '1.0') return false
   if (!Array.isArray(obj.data)) return false
-  
-  return obj.data.every((item: any) => {
-    if (!item || typeof item !== 'object') return false
-    if (typeof item.name !== 'string') return false
-    if (typeof item.url !== 'string') return false
-    if (typeof item.image !== 'string') return false
-    if (typeof item.price !== 'string') return false
-    if (typeof item.rating !== 'number' || item.rating < 0 || item.rating > 5) return false
-    if (typeof item.review_count !== 'number' || item.review_count < 0 || !Number.isInteger(item.review_count)) return false
-    if (typeof item.reason !== 'string') return false
-    return true
-  })
+  return obj.data.every((item: any) =>
+    item && typeof item === 'object' &&
+    typeof item.name === 'string' &&
+    typeof item.url === 'string' &&
+    typeof item.image === 'string' &&
+    typeof item.price === 'string' &&
+    typeof item.rating === 'number' && item.rating >= 0 && item.rating <= 5 &&
+    typeof item.review_count === 'number' && item.review_count >= 0 && Number.isInteger(item.review_count) &&
+    typeof item.reason === 'string'
+  )
 }
-
-// Parse JSON safely
-const safeJsonParse = (text: string): any => {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
-// Extract content from fenced code blocks
+const safeJsonParse = (t: string): any => { try { return JSON.parse(t) } catch { return null } }
 const extractFencedContent = (text: string): string | null => {
-  const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/)
-  if (jsonMatch) return jsonMatch[1].trim()
-  
-  const productCardMatch = text.match(/```product_card\s*([\s\S]*?)\s*```/)
-  if (productCardMatch) return productCardMatch[1].trim()
-  
+  const m1 = text.match(/```json\s*([\s\S]*?)\s*```/); if (m1) return m1[1].trim()
+  const m2 = text.match(/```product_card\s*([\s\S]*?)\s*```/); if (m2) return m2[1].trim()
   return null
 }
-
-// Find JSON object boundaries (from '{' to matching '}')
-const findJsonBoundaries = (text: string, startIndex: number): { start: number; end: number } | null => {
-  if (text[startIndex] !== '{') return null
-  
-  let braceCount = 0
-  let inString = false
-  let escapeNext = false
-  
-  for (let i = startIndex; i < text.length; i++) {
-    const char = text[i]
-    
-    if (escapeNext) {
-      escapeNext = false
-      continue
-    }
-    
-    if (char === '\\') {
-      escapeNext = true
-      continue
-    }
-    
-    if (char === '"' && !escapeNext) {
-      inString = !inString
-      continue
-    }
-    
-    if (!inString) {
-      if (char === '{') {
-        braceCount++
-      } else if (char === '}') {
-        braceCount--
-        if (braceCount === 0) {
-          return { start: startIndex, end: i + 1 }
-        }
+const findJsonBoundaries = (text: string, start: number): { start: number; end: number } | null => {
+  if (text[start] !== '{') return null
+  let brace = 0, inStr = false, esc = false
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (esc) { esc = false; continue }
+    if (ch === '\\') { esc = true; continue }
+    if (ch === '"' && !esc) { inStr = !inStr; continue }
+    if (!inStr) {
+      if (ch === '{') brace++
+      else if (ch === '}') {
+        brace--
+        if (brace === 0) return { start, end: i + 1 }
       }
     }
   }
-  
   return null
 }
-
-// Message content parser - splits text into text and card fragments
 const parseMessageContent = (text: string): MessageItem[] => {
-  const fragments: MessageItem[] = []
-  let currentIndex = 0
-  
-  while (currentIndex < text.length) {
-    // Try to find fenced code blocks first
-    const fencedMatch = text.slice(currentIndex).match(/```(?:json|product_card)\s*([\s\S]*?)\s*```/)
-    
-    if (fencedMatch) {
-      const matchStart = currentIndex + fencedMatch.index!
-      const matchEnd = matchStart + fencedMatch[0].length
-      
-      // Add text before the fenced block
-      if (matchStart > currentIndex) {
-        const textBefore = text.slice(currentIndex, matchStart)
-        if (textBefore.trim()) {
-          fragments.push({ type: 'text', text: textBefore })
-        }
+  const frags: MessageItem[] = []
+  let idx = 0
+  while (idx < text.length) {
+    const fenced = text.slice(idx).match(/```(?:json|product_card)\s*([\s\S]*?)\s*```/)
+    if (fenced) {
+      const start = idx + (fenced.index ?? 0)
+      const end = start + fenced[0].length
+      if (start > idx) {
+        const before = text.slice(idx, start)
+        if (before.trim()) frags.push({ type: 'text', text: before })
       }
-      
-      // Try to parse the fenced content
-      const fencedContent = extractFencedContent(fencedMatch[0])
-      if (fencedContent) {
-        const parsed = safeJsonParse(fencedContent)
-        if (parsed && validateProductCard(parsed)) {
-          fragments.push({ type: 'card', card: parsed })
-        } else {
-          fragments.push({ type: 'text', text: fencedMatch[0] })
-        }
+      const body = extractFencedContent(fenced[0])
+      if (body) {
+        const parsed = safeJsonParse(body)
+        if (parsed && validateProductCard(parsed)) frags.push({ type: 'card', card: parsed })
+        else frags.push({ type: 'text', text: fenced[0] })
       } else {
-        fragments.push({ type: 'text', text: fencedMatch[0] })
+        frags.push({ type: 'text', text: fenced[0] })
       }
-      
-      currentIndex = matchEnd
+      idx = end
     } else {
-      // Look for bare JSON objects
-      const jsonStart = text.indexOf('{', currentIndex)
-      
-      if (jsonStart === -1) {
-        // No more JSON objects, add remaining text
-        const remainingText = text.slice(currentIndex)
-        if (remainingText.trim()) {
-          fragments.push({ type: 'text', text: remainingText })
-        }
+      const jsStart = text.indexOf('{', idx)
+      if (jsStart === -1) {
+        const rest = text.slice(idx)
+        if (rest.trim()) frags.push({ type: 'text', text: rest })
         break
       }
-      
-      // Add text before JSON
-      if (jsonStart > currentIndex) {
-        const textBefore = text.slice(currentIndex, jsonStart)
-        if (textBefore.trim()) {
-          fragments.push({ type: 'text', text: textBefore })
-        }
+      if (jsStart > idx) {
+        const before = text.slice(idx, jsStart)
+        if (before.trim()) frags.push({ type: 'text', text: before })
       }
-      
-      // Try to parse JSON object
-      const boundaries = findJsonBoundaries(text, jsonStart)
-      if (boundaries) {
-        const jsonText = text.slice(boundaries.start, boundaries.end)
-        const parsed = safeJsonParse(jsonText)
-        
-        if (parsed && validateProductCard(parsed)) {
-          fragments.push({ type: 'card', card: parsed })
-        } else {
-          fragments.push({ type: 'text', text: jsonText })
-        }
-        
-        currentIndex = boundaries.end
+      const bounds = findJsonBoundaries(text, jsStart)
+      if (bounds) {
+        const jtxt = text.slice(bounds.start, bounds.end)
+        const parsed = safeJsonParse(jtxt)
+        if (parsed && validateProductCard(parsed)) frags.push({ type: 'card', card: parsed })
+        else frags.push({ type: 'text', text: jtxt })
+        idx = bounds.end
       } else {
-        // Invalid JSON, treat as text
-        fragments.push({ type: 'text', text: text[jsonStart] })
-        currentIndex = jsonStart + 1
+        frags.push({ type: 'text', text: text[jsStart] })
+        idx = jsStart + 1
       }
     }
   }
-  
-  return fragments
+  return frags
 }
-
-// Format review count (e.g., 2500 -> 2.5k)
-const formatReviewCount = (count: number): string => {
-  if (count >= 1000) {
-    return (count / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
-  }
-  return count.toString()
+const formatReviewCount = (n: number) => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n)
+const handleImageError = (e: Event) => {
+  (e.target as HTMLImageElement).src =
+    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNGNUY1RjUiLz48cGF0aCBkPSJNMzAgMzBINzBWNzBIMzBWMzBaIiBmaWxsPSIjRDdEN0Q3Ii8+PHBhdGggZD0iTTM1IDM1TDUwIDUwTDUwIDM1TDM1IDM1WiIgZmlsbD0iI0E5QTlBOSIvPjwvc3ZnPg=='
 }
+const renderMarkdown = (t: string): string =>
+  t.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+   .replace(/\*(.*?)\*/g, '<em>$1</em>')
+   .replace(/`(.*?)`/g, '<code>$1</code>')
+   .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+   .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+   .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+   .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+   .replace(/^- (.*$)/gim, '<li>$1</li>')
+   .replace(/\n/g, '<br>')
 
-// Handle image loading errors
-const handleImageError = (event: Event) => {
-  const img = event.target as HTMLImageElement
-  img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjRjVGNUY1Ii8+CjxwYXRoIGQ9Ik0zMCAzMEg3MFY3MEgzMFYzMFoiIGZpbGw9IiNEN0Q3RDciLz4KPHBhdGggZD0iTTM1IDM1TDUwIDUwTDUwIDM1TDM1IDM1WiIgZmlsbD0iI0E5QTlBOSIvPgo8L3N2Zz4K'
-}
-
-// Simple markdown renderer
-const renderMarkdown = (text: string): string => {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
-    .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
-    .replace(/`(.*?)`/g, '<code>$1</code>') // Inline code
-    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>') // Code blocks
-    .replace(/^### (.*$)/gim, '<h3>$1</h3>') // H3 headers
-    .replace(/^## (.*$)/gim, '<h2>$1</h2>') // H2 headers
-    .replace(/^# (.*$)/gim, '<h1>$1</h1>') // H1 headers
-    .replace(/^- (.*$)/gim, '<li>$1</li>') // List items
-    .replace(/\n/g, '<br>') // Line breaks
-}
-
-// Create session on component mount
-onMounted(async () => {
-  await createSession()
-})
-
+// ========= 父页 URL 监听 =========
 const handleParentMessage = (event: MessageEvent) => {
-  // TODO: 生产环境建议校验 event.origin
   if (event.data?.type === 'PARENT_URL') {
     const url: string = event.data.url
     console.log('[IFRAME] got parent url:', url)
     currentUrl.value = url
     ;(window as any).__CSA_PARENT_URL__ = url
-    localStorage.setItem('CSA_PARENT_URL', url)
-    resolveParentUrlReady?.() // 标记就绪
+    localStorage.setItem(LS_KEYS.parentUrl, url)
+    resolveParentUrlReady?.()
   }
 }
+onMounted(() => window.addEventListener('message', handleParentMessage))
+onUnmounted(() => window.removeEventListener('message', handleParentMessage))
 
-// Add message event listener on mount
-onMounted(() => {
-  window.addEventListener('message', handleParentMessage)
+// ========= 核心：初始化 & 历史拉取 =========
+onMounted(async () => {
+  await initSessionAndLoadHistory()
 })
 
-// Remove message event listener on unmount
-onUnmounted(() => {
-  window.removeEventListener('message', handleParentMessage)
-})
-
-// Create a new session
-const createSession = async () => {
+async function initSessionAndLoadHistory() {
+  isLoading.value = true
   try {
-    const response = await fetch(`${SERVER_URL}/create-session`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-    })
-    if (response.status === 200) {
-      const data = await response.json()
-      sessionId.value = data.session_id
-      console.log(`✅ Session created: ${sessionId.value}`)
-      isLoading.value = false
-    } else {
-      console.error(`❌ Failed to create session: ${response.text}`)
+    // 1) 先看看本地有没有 session_id
+    const saved = localStorage.getItem(LS_KEYS.sessionId)
+    if (saved) {
+      sessionId.value = saved
+      const ok = await reloadFromServer()
+      if (ok) {
+        console.log('✅ Restored session from localStorage:', saved)
+        isLoading.value = false
+        return
+      }
+      // 本地 session 失效了，走新会话
+      console.warn('⚠️ Saved session invalid, creating new session…')
     }
-  } catch (error) {
-    console.error('Error creating session:', error)
+
+    // 2) 创建新会话
+    await createSession()
+    // 3) 新会话自然没有历史，这里不必拉；如果后端创建时已有历史，也可再调一次：
+    // await reloadFromServer()
+  } catch (e) {
+    console.error('init/load error:', e)
+  } finally {
+    isLoading.value = false
   }
 }
 
-// Send message
-const sendMessage = async () => {
-  if (userInput.value.trim() !== '' && sessionId.value) {
-    // Add the user's message to the chat
-    messages.value.push({
-      id: Date.now(),
-      role: 'user',
-      content: [
-        {
-          type: 'text',
-          text: userInput.value.trim()
+// 创建会话（会把 id 存到 localStorage）
+async function createSession() {
+  const resp = await fetch(`${SERVER_URL}/create-session`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+  if (!resp.ok) {
+    console.error(`❌ Failed to create session: ${await resp.text()}`)
+    return
+  }
+  const data = await resp.json()
+  sessionId.value = data.session_id
+  localStorage.setItem(LS_KEYS.sessionId, data.session_id) // ★ 持久化
+  console.log(`✅ Session created: ${sessionId.value}`)
+}
+
+// 从后端拉历史消息并渲染
+async function reloadFromServer(): Promise<boolean> {
+  if (!sessionId.value) return false
+  try {
+    const resp = await fetch(`${SERVER_URL}/sessions/${sessionId.value}/messages`, { method: 'GET' })
+    if (!resp.ok) {
+      console.warn('load history failed:', resp.status)
+      return false
+    }
+    const data = await resp.json()
+    if (!data.success || !Array.isArray(data.messages)) return false
+
+    // 把后端的 {role, text} 转为前端的 Message[]
+    const flat = data.messages as Array<{ role: string; text: string; createdAt?: string }>
+    const mapped: Message[] = flat
+      .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'system')
+      .map((m, idx) => {
+        const role = m.role as Message['role']
+        const id = Date.now() + idx
+        if (role === 'assistant') {
+          return { id, role, content: parseMessageContent(m.text ?? '') }
         }
-      ]
-    })
-
-    // Scroll to bottom
-    nextTick(() => {
-      const chatContainer = document.querySelector('.chat-container')
-      if (chatContainer) {
-        chatContainer.scrollTo({
-          top: chatContainer.scrollHeight,
-          behavior: 'smooth'
-        })
-      }
-    })
-
-    const messageText = userInput.value.trim()
-    
-    // Clear the input
-    userInput.value = ''
-
-    // Set loading state
-    isLoading.value = true
-    isAssistantTyping.value = true
-
-    try {
-      // 等待父页URL（最多 1500ms；如果拿不到也继续发）
-      await Promise.race([
-        parentUrlReady,
-        new Promise((r) => setTimeout(r, 1500))
-      ])
-
-      const urlForSend = getUrlForSend()
-      console.log('[IFRAME] /chat current_url =', urlForSend)
-
-      // Make the API call to the backend
-      const response = await fetch(`${SERVER_URL}/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          session_id: sessionId.value,
-          message: messageText,
-          current_url: urlForSend || null        // ★ 关键：带上 current_url
-        })
+        // user / system 都当纯文本块
+        return { id, role, content: [{ type: 'text', text: m.text ?? '' }] }
       })
 
-      if (response.status === 200) {
-        const data = await response.json()
-        
-        if (data.success) {
-          // Parse the assistant's response into fragments
-          const contentFragments = parseMessageContent(data.response)
-          
-          // Add the assistant's reply to the chat
-          messages.value.push({
-            id: Date.now() + 1,
-            role: 'assistant',
-            content: contentFragments
-          })
-        } else {
-          console.error('API returned success: false')
-        }
-        
-        // Scroll to bottom
-        nextTick(() => {
-          const chatContainer = document.querySelector('.chat-container')
-          if (chatContainer) {
-            chatContainer.scrollTo({
-              top: chatContainer.scrollHeight,
-              behavior: 'smooth'
-            })
-          }
-        })
-      } else {
-        console.error(`❌ Failed to send message: ${response.text}`)
-      }
-    } catch (error) {
-      console.error('Error:', error)
-    } finally {
-      isLoading.value = false
-      isAssistantTyping.value = false
-    }
+    messages.value = mapped
+    // 滚动到底
+    nextTick(() => {
+      const el = document.querySelector('.chat-container')
+      el?.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
+    })
+    return true
+  } catch (e) {
+    console.error('reloadFromServer error:', e)
+    return false
   }
 }
 
-/*
-// Test examples for the parser:
-// Example 1: "这是推荐：```json\n{...合法 product_card ...}\n```\n以上是理由说明。"
-// Should result in: [text, card, text]
+// ========= 发送消息（保持你原逻辑，补一点持久化） =========
+async function sendMessage() {
+  if (userInput.value.trim() === '' || !sessionId.value) return
 
-// Example 2: "先看这个{...非法JSON...}，再看```product_card\n{...合法 product_card ...}\n```"
-// Should result in: [text, text, card]
-*/
+  // 本地先插入 user 消息
+  const messageText = userInput.value.trim()
+  messages.value.push({
+    id: Date.now(),
+    role: 'user',
+    content: [{ type: 'text', text: messageText }]
+  })
+
+  // 清输入 & 滚动
+  userInput.value = ''
+  nextTick(() => {
+    const el = document.querySelector('.chat-container')
+    el?.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  })
+
+  isLoading.value = true
+  isAssistantTyping.value = true
+
+  try {
+    // 尽量拿到父页 URL
+    await Promise.race([parentUrlReady, new Promise(r => setTimeout(r, 1500))])
+    const urlForSend = getUrlForSend()
+    console.log('[IFRAME] /chat current_url =', urlForSend)
+
+    const resp = await fetch(`${SERVER_URL}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId.value,
+        message: messageText,
+        current_url: urlForSend || null
+      })
+    })
+
+    if (!resp.ok) {
+      console.error(`❌ Failed to send message: ${await resp.text()}`)
+      return
+    }
+    const data = await resp.json()
+    if (data.success) {
+      const fragments = parseMessageContent(data.response ?? '')
+      messages.value.push({
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: fragments
+      })
+      // ★ 可选：同步拉后端（确保和服务端历史一致）
+      // await reloadFromServer()
+    } else {
+      console.error('API returned success: false')
+    }
+
+    nextTick(() => {
+      const el = document.querySelector('.chat-container')
+      el?.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    })
+  } catch (e) {
+    console.error('sendMessage error:', e)
+  } finally {
+    isLoading.value = false
+    isAssistantTyping.value = false
+  }
+}
+
+// ========= 清空聊天（前端视角新建会话） =========
+async function clearChat() {
+  if (!sessionId.value) return
+  try {
+    const resp = await fetch(`${SERVER_URL}/cleanup-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId.value })
+    })
+    const data = await resp.json()
+    if (resp.ok && data.success) {
+      console.log('✅ Chat cleared:', data.message)
+      messages.value = []   // 前端清空
+    } else {
+      console.error('❌ Failed to cleanup session:', data.error || resp.status)
+    }
+  } catch (e) {
+    console.error('clearChat error:', e)
+  }
+}
 </script>
 
 <style scoped lang="scss">
