@@ -585,8 +585,13 @@ async function clearChat() {
 
 .pc-product-title {
   margin: 0 0 8px 0;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
   
   a {
     color: #2563eb;
