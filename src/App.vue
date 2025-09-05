@@ -440,7 +440,6 @@ async function clearChat() {
 /* Chat styles */
 .chat-container {
   flex: 1;
-  border: 1px solid var(--color-border);
   padding: 10px;
   overflow-y: auto;
   min-height: 0;
@@ -557,15 +556,8 @@ async function clearChat() {
 }
 
 .pc-card-image {
-  flex-shrink: 0;
-  width: 120px;
-  height: 120px;
-  align-self: center;   
-
-  @media (max-width: 768px) {
-    width: 40%;
-    height: auto;
-  }
+  flex: 0 0 40%;   /* 左边图片占 40% */
+  max-width: 40%;
   
   img {
     width: 100%;
@@ -576,8 +568,9 @@ async function clearChat() {
 }
 
 .pc-card-content {
-  flex: 1;
-  padding: 12px;
+  flex: 0 0 60%;   /* 右边文字占 60% */
+  max-width: 60%;
+  padding: 8px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
