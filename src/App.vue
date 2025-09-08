@@ -77,7 +77,8 @@
 <script setup lang="ts">
 import { nextTick, ref, onMounted, onUnmounted } from 'vue'
 
-const SERVER_URL = "http://localhost:5000"
+// const SERVER_URL = "http://localhost:5000"
+const SERVER_URL = "http://52.91.223.130:5000"
 
 // ============ ★ 本地存储 Key ============
 const LS_KEYS = {
@@ -333,7 +334,7 @@ async function sendMessage() {
   isAssistantTyping.value = true
 
   const doPost = async () => {
-    // 尽量拿到父页 URL
+    // Get parent url
     await Promise.race([parentUrlReady, new Promise(r => setTimeout(r, 1500))])
     const urlForSend = getUrlForSend()
     console.log('[IFRAME] /chat current_url =', urlForSend)
