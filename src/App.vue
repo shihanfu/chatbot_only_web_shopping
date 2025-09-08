@@ -78,7 +78,8 @@
 import { nextTick, ref, onMounted, onUnmounted } from 'vue'
 
 // const SERVER_URL = "http://localhost:5000"
-const SERVER_URL = "http://52.91.223.130:5000"
+// const SERVER_URL = "http://52.91.223.130:5000"
+const SERVER_URL = "/api"
 
 // ============ ★ 本地存储 Key ============
 const LS_KEYS = {
