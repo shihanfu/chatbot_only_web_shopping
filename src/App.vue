@@ -6,7 +6,7 @@
       <n-button size="small" tertiary @click="clearChat" :disabled="isLoading">Clear Chat</n-button>
     </div>
     <div class="chat-container">
-      <div class="row" v-for="message in messages" :key="message.id">
+      <div class="row" v-for="message in visibleMessages" :key="message.id">
         <div class="space" v-if="message.role == 'user'"></div>
         <div :class="['message', message.role]" v-if="message.role !== 'system'">
           <div v-for="(item, index) in message.content" :key="index">
@@ -75,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, onMounted, onUnmounted } from 'vue'
+import { nextTick, ref, onMounted, onUnmounted, computed } from 'vue'
 
 // const SERVER_URL = "http://localhost:5000"
 // const SERVER_URL = "http://52.91.223.130:5000"
@@ -110,6 +110,11 @@ const messages = ref<Message[]>([])
 const sessionId = ref<string | null>(null)
 const isLoading = ref(true)
 const isAssistantTyping = ref(false)
+
+// Only expose non-hidden messages to the template
+const visibleMessages = computed(() =>
+  ((messages.value as any[]) ?? []).filter(m => !Boolean(m?.hidden))
+)
 
 // ========= 工具函数（保留你原来的） =========
 const validateProductCard = (obj: any): obj is ProductCardJSON => {
