@@ -81,13 +81,13 @@ import { nextTick, ref, onMounted, onUnmounted, computed } from 'vue'
 // const SERVER_URL = "http://52.91.223.130:5000"
 const SERVER_URL = "/api"
 
-// ============ ★ 本地存储 Key ============
+// ============ Local storage keys ============
 const LS_KEYS = {
   sessionId: 'CSA_SESSION_ID',
   parentUrl: 'CSA_PARENT_URL'
 } as const
 
-// === 父页 URL 逻辑（保留你的实现） ===
+// === Parent page URL logic (keep your implementation) ===
 const currentUrl = ref<string | null>(localStorage.getItem(LS_KEYS.parentUrl))
 let resolveParentUrlReady!: () => void
 const parentUrlReady = new Promise<void>((res) => (resolveParentUrlReady = res))
@@ -95,7 +95,7 @@ function getUrlForSend(): string | null {
   return currentUrl.value || (window as any).__CSA_PARENT_URL__ || localStorage.getItem(LS_KEYS.parentUrl)
 }
 
-// ========= 类型定义（保持你原来的） =========
+// ========= Type definitions (retain original) =========
 interface ProductItem {
   name: string; url: string; image: string; price: string;
   rating: number; review_count: number; reason: string
@@ -104,7 +104,7 @@ interface ProductCardJSON { type: 'product_card'; version: '1.0'; data: ProductI
 type MessageItem = { type:'text'; text:string } | { type:'card'; card: ProductCardJSON }
 interface Message { id: number; role: 'user' | 'assistant' | 'system'; content: MessageItem[] }
 
-// ========= 状态 =========
+// ========= State =========
 const userInput = ref('')
 const messages = ref<Message[]>([])
 const sessionId = ref<string | null>(null)
@@ -116,7 +116,7 @@ const visibleMessages = computed(() =>
   ((messages.value as any[]) ?? []).filter(m => !Boolean(m?.hidden))
 )
 
-// ========= 工具函数（保留你原来的） =========
+// ========= Utility functions (retain original) =========
 const validateProductCard = (obj: any): obj is ProductCardJSON => {
   if (!obj || typeof obj !== 'object') return false
   if (obj.type !== 'product_card') return false
@@ -220,7 +220,7 @@ const renderMarkdown = (t: string): string =>
    .replace(/^- (.*$)/gim, '<li>$1</li>')
    .replace(/\n/g, '<br>')
 
-// ========= 父页 URL 监听 =========
+// ========= Parent page URL listener =========
 const handleParentMessage = (event: MessageEvent) => {
   if (event.data?.type === 'PARENT_URL') {
     const url: string = event.data.url
@@ -234,7 +234,7 @@ const handleParentMessage = (event: MessageEvent) => {
 onMounted(() => window.addEventListener('message', handleParentMessage))
 onUnmounted(() => window.removeEventListener('message', handleParentMessage))
 
-// ========= 核心：初始化 & 历史拉取 =========
+// ========= Core: initialization & history fetch =========
 onMounted(async () => {
   await initSessionAndLoadHistory()
 })
@@ -242,7 +242,7 @@ onMounted(async () => {
 async function initSessionAndLoadHistory() {
   isLoading.value = true
   try {
-    // 1) 先看看本地有没有 session_id
+    // 1) First check if session_id exists in local storage
     const saved = localStorage.getItem(LS_KEYS.sessionId)
     if (saved) {
       sessionId.value = saved
@@ -252,13 +252,14 @@ async function initSessionAndLoadHistory() {
         isLoading.value = false
         return
       }
-      // 本地 session 失效了，走新会话
+      // Local session is invalid; start a new session
       console.warn('⚠️ Saved session invalid, creating new session…')
     }
 
-    // 2) 创建新会话
+    // 2) Create a new session
     await createSession()
-    // 3) 新会话自然没有历史，这里不必拉；如果后端创建时已有历史，也可再调一次：
+    // 3) A new session has no history, no need to fetch; if the backend
+    //    already created it with history, you could call again:
     // await reloadFromServer()
   } catch (e) {
     console.error('init/load error:', e)
@@ -267,7 +268,7 @@ async function initSessionAndLoadHistory() {
   }
 }
 
-// 创建会话（会把 id 存到 localStorage）
+// Create session (store id in localStorage)
 async function createSession() {
   const resp = await fetch(`${SERVER_URL}/create-session`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
   if (!resp.ok) {
@@ -276,7 +277,7 @@ async function createSession() {
   }
   const data = await resp.json()
   sessionId.value = data.session_id
-  localStorage.setItem(LS_KEYS.sessionId, data.session_id) // ★ 持久化
+  localStorage.setItem(LS_KEYS.sessionId, data.session_id) // Persist
   console.log(`✅ Session created: ${sessionId.value}`)
 }
 
@@ -286,13 +287,13 @@ async function reloadFromServer(): Promise<boolean> {
     const resp = await fetch(`${SERVER_URL}/sessions/${sessionId.value}/messages`, { method: 'GET' })
     if (!resp.ok) {
       console.warn('load history failed:', resp.status)
-      return false // ← 404 时返回 false，触发上层走新会话
+      return false // ← Return false on 404 to trigger creating a new session upstream
     }
-    // ... 保持你原逻辑
+    // ... keep your original logic
     const data = await resp.json()
     if (!data.success || !Array.isArray(data.messages)) return false
 
-    // 把后端的 {role, text} 转为前端的 Message[]
+    // Convert backend {role, text} to frontend Message[]
     const flat = data.messages as Array<{ role: string; text: string; createdAt?: string }>
     const mapped: Message[] = flat
       .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'system')
@@ -302,12 +303,12 @@ async function reloadFromServer(): Promise<boolean> {
         if (role === 'assistant') {
           return { id, role, content: parseMessageContent(m.text ?? '') }
         }
-        // user / system 都当纯文本块
+        // Treat user/system as plain text blocks
         return { id, role, content: [{ type: 'text', text: m.text ?? '' }] }
       })
 
     messages.value = mapped
-    // 滚动到底
+    // Scroll to bottom
     nextTick(() => {
       const el = document.querySelector('.chat-container')
       el?.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
@@ -322,7 +323,7 @@ async function reloadFromServer(): Promise<boolean> {
 async function sendMessage() {
   if (userInput.value.trim() === '') return
 
-  // ★ 没有 session 时兜底自动建一个
+  // Fallback: automatically create a session if missing
   if (!sessionId.value) {
     await createSession()
     if (!sessionId.value) {
@@ -355,7 +356,7 @@ async function sendMessage() {
   try {
     let resp = await doPost()
 
-    // ★ 如果 404，说明旧会话无效：重建并重试一次
+    // If 404, the old session is invalid: recreate and retry once
     if (resp.status === 404) {
       console.warn('⚠️ /chat 404, recreating session and retrying…')
       sessionId.value = null
@@ -385,7 +386,7 @@ async function sendMessage() {
   }
 }
 
-// ========= 清空聊天（前端视角新建会话） =========
+// ========= Clear chat (new session from frontend perspective) =========
 async function clearChat() {
   if (!sessionId.value) return
   try {
@@ -399,17 +400,17 @@ async function clearChat() {
     if (resp.ok && data.success) {
       console.log('✅ Chat cleared:', data.message)
 
-      // 1) 前端视图清空
+      // 1) Clear the frontend view
       messages.value = []
 
-      // 2) 本地 session 置空并清掉 LS
+      // 2) Reset local session and remove it from localStorage
       sessionId.value = null
       localStorage.removeItem(LS_KEYS.sessionId)
 
-      // 3) 立刻新建一个全新的 session（避免后续 /chat 404）
+      // 3) Immediately create a brand-new session (avoid subsequent /chat 404)
       await createSession()
 
-      // （可选）提示一条系统消息
+      // (Optional) add a system message
       messages.value.push({
         id: Date.now(),
         role: 'system',
@@ -563,7 +564,7 @@ async function clearChat() {
 }
 
 .pc-card-image {
-  flex: 0 0 40%;   /* 左边图片占 40% */
+  flex: 0 0 40%;   /* Left image takes 40% */
   max-width: 40%;
   
   img {
@@ -575,7 +576,7 @@ async function clearChat() {
 }
 
 .pc-card-content {
-  flex: 0 0 60%;   /* 右边文字占 60% */
+  flex: 0 0 60%;   /* Right text takes 60% */
   max-width: 60%;
   padding: 8px;
   display: flex;
