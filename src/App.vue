@@ -113,7 +113,7 @@ const isAssistantTyping = ref(false)
 
 // Only expose non-hidden messages to the template
 const visibleMessages = computed(() =>
-  ((messages.value as any[]) ?? []).filter(m => !Boolean(m?.hidden))
+  ((messages.value as any[]) ?? []).filter(m => !m?.hidden)
 )
 
 // ========= Utility functions (retain original) =========
