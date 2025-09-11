@@ -15,7 +15,7 @@
               {{ item.text }}
             </p>
             <!-- Assistant messages: text or card -->
-            <div v-else-if="item.type === 'text' && message.role === 'assistant'" v-html="renderMarkdown(item.text)"></div>
+            <div v-else-if="item.type === 'text' && message.role === 'assistant'" v-html="renderMarkdown(item.text)" class="message-text"></div>
             <div v-else-if="item.type === 'card' && message.role === 'assistant'" class="pc-card-container">
               <div v-for="(product, productIndex) in item.card.data" :key="productIndex" class="pc-product-card">
                 <div class="pc-card-image">
@@ -76,10 +76,12 @@
 
 <script setup lang="ts">
 import { nextTick, ref, onMounted, onUnmounted, computed } from 'vue'
+import MarkdownIt from 'markdown-it'
+const md = new MarkdownIt()
 
 // const SERVER_URL = "http://localhost:5000"
 // const SERVER_URL = "http://52.91.223.130:5000"
-const SERVER_URL = "/api"
+const SERVER_URL = "http://52.91.223.130/api"
 
 // ============ Local storage keys ============
 const LS_KEYS = {
@@ -209,16 +211,18 @@ const handleImageError = (e: Event) => {
   (e.target as HTMLImageElement).src =
     'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNGNUY1RjUiLz48cGF0aCBkPSJNMzAgMzBINzBWNzBIMzBWMzBaIiBmaWxsPSIjRDdEN0Q3Ii8+PHBhdGggZD0iTTM1IDM1TDUwIDUwTDUwIDM1TDM1IDM1WiIgZmlsbD0iI0E5QTlBOSIvPjwvc3ZnPg=='
 }
-const renderMarkdown = (t: string): string =>
-  t.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-   .replace(/\*(.*?)\*/g, '<em>$1</em>')
-   .replace(/`(.*?)`/g, '<code>$1</code>')
-   .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-   .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-   .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-   .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-   .replace(/^- (.*$)/gim, '<li>$1</li>')
-   .replace(/\n/g, '<br>')
+const renderMarkdown = (t: string): string => {
+  return md.render(t)
+}
+  // t.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+  //  .replace(/\*(.*?)\*/g, '<em>$1</em>')
+  //  .replace(/`(.*?)`/g, '<code>$1</code>')
+  //  .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+  //  .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+  //  .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+  //  .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+  //  .replace(/^- (.*$)/gim, '<li>$1</li>')
+  //  .replace(/\n/g, '<br>')
 
 // ========= Parent page URL listener =========
 const handleParentMessage = (event: MessageEvent) => {
@@ -590,6 +594,7 @@ async function clearChat() {
   font-weight: 600;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -653,5 +658,11 @@ async function clearChat() {
   color: #4b5563;
   font-size: 12px;
   line-height: 1.4;
+}
+.message-text{
+  :deep(ul) {
+    list-style-type: disc;
+    list-style-position: inside;
+  }
 }
 </style>
