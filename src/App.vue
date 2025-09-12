@@ -104,7 +104,7 @@ interface ProductItem {
 }
 interface ProductCardJSON { type: 'product_card'; version: '1.0'; data: ProductItem[] }
 type MessageItem = { type:'text'; text:string } | { type:'card'; card: ProductCardJSON }
-interface Message { id: number; role: 'user' | 'assistant' | 'system'; content: MessageItem[] }
+interface Message { id: number; role: 'user' | 'assistant' | 'system'; content: MessageItem[]; hidden?: boolean }
 
 // ========= State =========
 const userInput = ref('')
@@ -114,9 +114,24 @@ const isLoading = ref(true)
 const isAssistantTyping = ref(false)
 
 // Only expose non-hidden messages to the template
-const visibleMessages = computed(() =>
-  ((messages.value as any[]) ?? []).filter(m => !m?.hidden)
-)
+const visibleMessages = computed(() => {
+  const allMessages = (messages.value as any[]) ?? []
+  const visible = allMessages.filter(m => !m?.hidden)
+  
+  console.log('🔍 visibleMessages computed:', {
+    total: allMessages.length,
+    visible: visible.length,
+    hidden: allMessages.length - visible.length
+  })
+  
+  // Debug: show which messages are being hidden
+  const hiddenMessages = allMessages.filter(m => m?.hidden)
+  if (hiddenMessages.length > 0) {
+    console.log('🔍 Hidden messages:', hiddenMessages.map(m => ({ role: m.role, text: m.content?.[0]?.text?.substring(0, 50) + '...' })))
+  }
+  
+  return visible
+})
 
 // ========= Utility functions (retain original) =========
 const validateProductCard = (obj: any): obj is ProductCardJSON => {
@@ -298,18 +313,30 @@ async function reloadFromServer(): Promise<boolean> {
     if (!data.success || !Array.isArray(data.messages)) return false
 
     // Convert backend {role, text} to frontend Message[]
-    const flat = data.messages as Array<{ role: string; text: string; createdAt?: string }>
+    const flat = data.messages as Array<{ role: string; text: string; createdAt?: string; hidden?: boolean }>
+    console.log('🔍 Raw messages from backend:', flat)
+    
     const mapped: Message[] = flat
       .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'system')
       .map((m, idx) => {
         const role = m.role as Message['role']
         const id = Date.now() + idx
+        const baseMessage = { id, role, hidden: m.hidden || false }
+        
+        // Debug log for messages with "current url"
+        if (m.text && m.text.includes('current url')) {
+          console.log('🔍 Found current url message:', { text: m.text, hidden: m.hidden, willBeHidden: baseMessage.hidden })
+        }
+        
         if (role === 'assistant') {
-          return { id, role, content: parseMessageContent(m.text ?? '') }
+          return { ...baseMessage, content: parseMessageContent(m.text ?? '') }
         }
         // Treat user/system as plain text blocks
-        return { id, role, content: [{ type: 'text', text: m.text ?? '' }] }
+        return { ...baseMessage, content: [{ type: 'text', text: m.text ?? '' }] }
       })
+
+    console.log('🔍 Mapped messages:', mapped)
+    console.log('🔍 Hidden messages count:', mapped.filter(m => m.hidden).length)
 
     messages.value = mapped
     // Scroll to bottom
