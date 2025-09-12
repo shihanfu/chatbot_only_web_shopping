@@ -433,6 +433,15 @@ async function clearChat() {
 
 <style scoped lang="scss">
 /* No styles here, styles are in main.css and base.css */
+</style>
+
+<style>
+body {
+  line-height: 1.5;
+}
+</style>
+
+<style scoped lang="scss">
 .row {
   display: flex;
   flex-direction: row;
@@ -456,14 +465,14 @@ async function clearChat() {
   overflow-y: auto;
   min-height: 0;
   margin: 10px 0;
-  background-color: #f9f9f9;
+  background-color: #ffffff;
   border-radius: 8px;
 }
 
 .message {
   margin-bottom: 15px;
-  padding: 10px;
-  border-radius: 5px;
+  padding: 4px 10px;
+  border-radius: 16px;
   color: var(--color-text); // Ensure text color is set
 
   p {
@@ -482,7 +491,7 @@ async function clearChat() {
   }
 
   &.assistant {
-    background-color: rgb(225, 225, 225);
+    background-color: #E6E5EB;
     text-align: left;
     
     // Markdown styling
@@ -552,7 +561,7 @@ async function clearChat() {
 .pc-product-card {
   display: flex;
   background: white;
-  border-radius: 8px;
+  border-radius: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   margin-bottom: 12px;
   overflow: hidden;
